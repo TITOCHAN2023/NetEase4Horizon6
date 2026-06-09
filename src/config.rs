@@ -20,6 +20,10 @@ pub struct Config {
     pub open_ui: bool,
     /// mod Web UI 的端口（mod 默认 8103）
     pub mod_ui_port: u16,
+    /// 网易云音乐 exe 路径；为空则自动探测常见安装位置。检测不到进程时会尝试自动启动它。
+    pub netease_path: Option<String>,
+    /// 检测不到网易云时是否自动启动它
+    pub autostart_netease: bool,
 }
 
 impl Default for Config {
@@ -32,6 +36,8 @@ impl Default for Config {
             game_dir: None,
             open_ui: true,
             mod_ui_port: 8103,
+            netease_path: None,
+            autostart_netease: true,
         }
     }
 }

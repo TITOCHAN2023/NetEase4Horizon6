@@ -194,6 +194,21 @@ fn run_bridge(cfg: &Config, open_ui: bool) -> Result<()> {
         println!("👉 在打开的网页里选「在线电台 / Online Radio」，把地址粘贴进去（Ctrl+V）并播放。");
     }
 
+    // 检测不到网易云就尝试自动把它启动起来（连“先开网易云”都省了）
+    if cfg.autostart_netease {
+        let mut sys = System::new_all();
+        if find_main_pid(&sys, &cfg.process_name).is_none() {
+            if let Some(path) = locate_netease(cfg) {
+                println!("🚀 没检测到网易云，正在自动启动：{}", path.display());
+                let _ = Command::new(&path).spawn();
+                std::thread::sleep(Duration::from_millis(500));
+                sys.refresh_all();
+            } else {
+                println!("ℹ️  没检测到网易云，也没找到它的安装位置。请手动打开网易云音乐，或在 config.toml 里设置 netease_path。");
+            }
+        }
+    }
+
     println!();
     println!("⏳ 等待网易云音乐（{}）启动……（按 Ctrl+C 退出）", cfg.process_name);
     println!();
@@ -240,6 +255,33 @@ fn find_main_pid(sys: &System, name: &str) -> Option<u32> {
         .find(|(_, parent)| parent.map_or(true, |pp| !set.contains(&pp)))
         .or_else(|| matches.first())
         .map(|(pid, _)| *pid)
+}
+
+/// 找到网易云音乐 exe：优先用配置里的路径，否则探测常见安装位置。
+fn locate_netease(cfg: &Config) -> Option<std::path::PathBuf> {
+    if let Some(p) = &cfg.netease_path {
+        let pb = std::path::PathBuf::from(p);
+        if pb.is_file() {
+            return Some(pb);
+        }
+    }
+    let mut candidates = vec![
+        r"C:\Program Files\NetEase\CloudMusic\cloudmusic.exe".to_string(),
+        r"C:\Program Files (x86)\NetEase\CloudMusic\cloudmusic.exe".to_string(),
+        r"C:\Program Files (x86)\Netease\CloudMusic\cloudmusic.exe".to_string(),
+    ];
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            Path::new(&local)
+                .join(r"Netease\CloudMusic\cloudmusic.exe")
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+    candidates
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.is_file())
 }
 
 // ---------------------------------------------------------------------------
