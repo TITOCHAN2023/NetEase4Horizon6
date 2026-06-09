@@ -1,0 +1,24 @@
+[package]
+name = "netease-fh6-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "把网易云音乐的声音转成本地 HTTP 音频流，喂给 Forza Horizon 6 的 Spotify Radio mod 的“在线电台”入口。"
+license = "MIT"
+repository = ""
+
+[dependencies]
+# Windows 按进程环回采集（Process Loopback），纯 FFI，无需 C 编译器
+wasapi = "0.23"
+# LAME MP3 编码绑定（构建时需要 C 编译器，CI/有 MSVC 的机器即可；下载 release 的用户不受影响）
+mp3lame-encoder = "0.2"
+# 按名字查找网易云音乐进程
+sysinfo = "0.39"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
