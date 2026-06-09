@@ -9,7 +9,40 @@ use anyhow::{anyhow, bail, Result};
 use mp3lame_encoder::{max_required_buffer_size, Bitrate, Builder, DualPcm, Encoder, Quality};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use wasapi::{initialize_mta, AudioClient, Direction, SampleType, StreamMode, WaveFormat};
+use std::time::Instant;
+use wasapi::{
+    initialize_mta, AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat,
+};
+
+/// 枚举默认播放设备上、当前有音频会话的进程 PID（即“正在/可以出声”的应用）。
+/// 用于让用户从“正在出声的应用”里挑一个做音源。
+pub fn list_audio_session_pids() -> Vec<u32> {
+    let _ = initialize_mta();
+    let mut out = Vec::new();
+    let device = match DeviceEnumerator::new().and_then(|e| e.get_default_device(&Direction::Render))
+    {
+        Ok(d) => d,
+        Err(_) => return out,
+    };
+    {
+        if let Ok(mgr) = device.get_iaudiosessionmanager() {
+            if let Ok(en) = mgr.get_audiosessionenumerator() {
+                if let Ok(count) = en.get_count() {
+                    for i in 0..count {
+                        if let Ok(sess) = en.get_session(i) {
+                            if let Ok(pid) = sess.get_process_id() {
+                                if pid != 0 && !out.contains(&pid) {
+                                    out.push(pid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
 
 /// 设环境变量 NFB_DEBUG=1 时打印阶段日志，便于定位问题。
 fn dbg(msg: &str) {
@@ -63,6 +96,9 @@ pub fn capture_session(pid: u32, bitrate_kbps: u32, clients: &Clients) -> Result
     // 诊断：累计一段时间的峰值电平
     let mut peak: i32 = 0;
     let mut peak_frames: usize = 0;
+    // 实时时钟：保证“产出的样本数”严格跟着真实时间走，避免静音补多了越积越延迟。
+    let start = Instant::now();
+    let mut emitted: u64 = 0; // 已产出的每声道样本数
 
     loop {
         match h_event.wait_for_event(WAIT_TIMEOUT_MS) {
@@ -82,19 +118,24 @@ pub fn capture_session(pid: u32, bitrate_kbps: u32, clients: &Clients) -> Result
                 }
             }
             Err(_) => {
-                // 超时：补一段静音保持流不断
-                let frames = SAMPLE_RATE * WAIT_TIMEOUT_MS as usize / 1000;
-                left.resize(frames, 0);
-                right.resize(frames, 0);
-                if first {
-                    dbg(&format!("first timeout: silence {frames} frames"));
+                // 超时（网易云此刻没出声）：只补“真实时间已流逝、但还没产出”的那部分静音，
+                // 而不是固定 300ms——否则突发式渲染会让我们补太多静音，造成延迟累积。
+                let target = (start.elapsed().as_secs_f64() * SAMPLE_RATE as f64) as u64;
+                let deficit = target.saturating_sub(emitted);
+                // 单次最多补 0.5s，避免一次塞太多
+                let n = deficit.min((SAMPLE_RATE / 2) as u64) as usize;
+                if n == 0 {
+                    continue;
                 }
+                left.resize(n, 0);
+                right.resize(n, 0);
             }
         }
 
         if left.is_empty() {
             continue;
         }
+        emitted += left.len() as u64;
 
         // 实时电平：每约 3 秒打印一次，让用户确认确实抓到了网易云的声音。
         for &s in left.iter() {

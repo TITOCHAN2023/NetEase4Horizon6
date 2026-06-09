@@ -43,8 +43,9 @@ fn handle_client(mut stream: TcpStream, clients: Clients) -> std::io::Result<()>
                   \r\n";
     stream.write_all(header.as_bytes())?;
 
-    // 注册到广播列表。容量有限，防止某个慢客户端把内存撑爆。
-    let (tx, rx) = sync_channel::<Arc<Vec<u8>>>(256);
+    // 注册到广播列表。容量小，既防内存撑爆，也把我们这侧的额外延迟上限压低
+    // （慢客户端时宁可丢新块也不积压，保持“接近实时”）。
+    let (tx, rx) = sync_channel::<Arc<Vec<u8>>>(64);
     clients.lock().unwrap().push(tx);
 
     // 持续把收到的 MP3 数据写给这个客户端，写失败（客户端断开）就退出。

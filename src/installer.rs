@@ -104,6 +104,47 @@ fn validate_game_dir(dir: PathBuf) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// 首次启动用：先自动探测做默认值，再让用户确认或改。命令行 --game-dir 优先。
+pub fn first_run_game_dir(cli: &Option<String>, saved: &Option<String>) -> Result<PathBuf> {
+    if let Some(p) = cli {
+        return validate_game_dir(PathBuf::from(p));
+    }
+    let default = saved
+        .clone()
+        .or_else(|| detect_game_dir().map(|p| p.to_string_lossy().into_owned()));
+    loop {
+        match &default {
+            Some(d) => {
+                print!(
+                    "请确认 Forza Horizon 6 游戏目录(forzahorizon6.exe 所在文件夹)。\n  检测到：{d}\n  直接回车用它，或粘贴其它路径：\n> "
+                );
+            }
+            None => {
+                print!("没自动找到游戏目录。请粘贴 Forza Horizon 6 游戏目录(forzahorizon6.exe 所在文件夹)：\n> ");
+            }
+        }
+        std::io::stdout().flush().ok();
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        let line = line.trim().trim_matches('"');
+        let chosen = if line.is_empty() {
+            match &default {
+                Some(d) => d.clone(),
+                None => {
+                    println!("必须输入一个目录。");
+                    continue;
+                }
+            }
+        } else {
+            line.to_string()
+        };
+        match validate_game_dir(PathBuf::from(chosen)) {
+            Ok(p) => return Ok(p),
+            Err(e) => println!("{e} 请重试。"),
+        }
+    }
+}
+
 fn prompt_game_dir() -> Result<PathBuf> {
     loop {
         print!("请输入 Forza Horizon 6 的游戏目录（forzahorizon6.exe 所在文件夹），回车确认：\n> ");

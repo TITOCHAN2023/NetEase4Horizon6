@@ -42,6 +42,11 @@ impl Default for Config {
     }
 }
 
+/// 配置文件是否已存在（用来判断是否首次启动）
+pub fn config_exists() -> bool {
+    config_path().exists()
+}
+
 fn config_path() -> PathBuf {
     std::env::current_exe()
         .ok()

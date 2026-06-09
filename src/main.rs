@@ -65,6 +65,7 @@ fn main() -> Result<()> {
         .unwrap_or_default();
     let opts = parse_opts(&args);
 
+    let first_run = !config::config_exists();
     let mut cfg = Config::load();
     apply_opts(&mut cfg, &opts);
 
@@ -74,7 +75,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         "install" => {
-            let installed = install_flow(&mut cfg, &opts, true)?;
+            let installed = install_flow(&mut cfg, &opts, true, false)?;
             cfg.save();
             if installed {
                 println!("\n✅ 安装完成。下次双击本程序即可直接开始转播。");
@@ -83,12 +84,29 @@ fn main() -> Result<()> {
             Ok(())
         }
         "run" => {
+            if opts.process.is_none() {
+                pick_process_with_timeout(&mut cfg);
+            }
             cfg.save();
             run_bridge(&cfg, effective_open_ui(&cfg, &opts))
         }
-        // 默认（双击 / setup）：没装过就引导安装，然后开始转播
+        // 选音源（随时可重新选）
+        "pick" => {
+            pick_process_with_timeout(&mut cfg);
+            cfg.save();
+            println!("已保存音源：{}（下次启动沿用）", cfg.process_name);
+            Ok(())
+        }
+        // 默认（双击 / setup）：首次启动问游戏目录并装 mod；之后需要时再装。然后选音源、转播。
         "" | "setup" => {
-            maybe_install(&mut cfg, &opts);
+            if first_run {
+                let _ = install_flow(&mut cfg, &opts, true, true);
+            } else {
+                maybe_install(&mut cfg, &opts);
+            }
+            if opts.process.is_none() {
+                pick_process_with_timeout(&mut cfg);
+            }
             cfg.save();
             run_bridge(&cfg, effective_open_ui(&cfg, &opts))
         }
@@ -118,13 +136,19 @@ fn maybe_install(cfg: &mut Config, opts: &Opts) {
         // 不在 mod 文件夹里运行，跳过安装，直接当纯转播工具用
         return;
     }
-    if let Err(e) = install_flow(cfg, opts, true) {
+    if let Err(e) = install_flow(cfg, opts, true, false) {
         println!("⚠️  自动安装跳过：{e}");
     }
 }
 
 /// 返回 true 表示真的执行了安装。
-fn install_flow(cfg: &mut Config, opts: &Opts, interactive: bool) -> Result<bool> {
+/// force_prompt_gamedir=true 时（首次启动）一定会问/确认游戏目录。
+fn install_flow(
+    cfg: &mut Config,
+    opts: &Opts,
+    interactive: bool,
+    force_prompt_gamedir: bool,
+) -> Result<bool> {
     let src = match opts.mod_dir.as_ref().map(Into::into).or_else(installer::locate_mod_source) {
         Some(s) => s,
         None => {
@@ -137,7 +161,11 @@ fn install_flow(cfg: &mut Config, opts: &Opts, interactive: bool) -> Result<bool
         }
     };
 
-    let game = installer::resolve_game_dir(&opts.game_dir, &cfg.game_dir, interactive)?;
+    let game = if force_prompt_gamedir {
+        installer::first_run_game_dir(&opts.game_dir, &cfg.game_dir)?
+    } else {
+        installer::resolve_game_dir(&opts.game_dir, &cfg.game_dir, interactive)?
+    };
 
     if !opts.yes
         && !installer::confirm(&format!(
@@ -194,8 +222,8 @@ fn run_bridge(cfg: &Config, open_ui: bool) -> Result<()> {
         println!("👉 在打开的网页里选「在线电台 / Online Radio」，把地址粘贴进去（Ctrl+V）并播放。");
     }
 
-    // 检测不到网易云就尝试自动把它启动起来（连“先开网易云”都省了）
-    if cfg.autostart_netease {
+    // 检测不到网易云就尝试自动把它启动起来（仅当音源是网易云时）
+    if cfg.autostart_netease && cfg.process_name.eq_ignore_ascii_case("cloudmusic.exe") {
         let mut sys = System::new_all();
         if find_main_pid(&sys, &cfg.process_name).is_none() {
             if let Some(path) = locate_netease(cfg) {
@@ -255,6 +283,74 @@ fn find_main_pid(sys: &System, name: &str) -> Option<u32> {
         .find(|(_, parent)| parent.map_or(true, |pp| !set.contains(&pp)))
         .or_else(|| matches.first())
         .map(|(pid, _)| *pid)
+}
+
+/// 列出当前正在出声的应用，让用户输入序号选择音源；10 秒不选则保持默认（网易云）。
+/// 命令行给了 --process 时不会进这里。
+fn pick_process_with_timeout(cfg: &mut Config) {
+    let pids = audio::list_audio_session_pids();
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    // pid -> 进程名，按名字去重
+    let mut names: Vec<String> = Vec::new();
+    for pid in &pids {
+        if let Some((_, p)) = sys.processes().iter().find(|(k, _)| k.as_u32() == *pid) {
+            let n = p.name().to_string_lossy().into_owned();
+            if !names.iter().any(|x| x.eq_ignore_ascii_case(&n)) {
+                names.push(n);
+            }
+        }
+    }
+
+    if names.is_empty() {
+        println!("（未检测到正在出声的应用，使用默认音源：{}）", cfg.process_name);
+        return;
+    }
+
+    println!();
+    println!("🎧 检测到正在出声的应用，输入序号选择音源：");
+    for (i, n) in names.iter().enumerate() {
+        let mark = if n.eq_ignore_ascii_case(&cfg.process_name) {
+            "   ← 默认"
+        } else {
+            ""
+        };
+        println!("   [{}] {}{}", i + 1, n, mark);
+    }
+    println!("（输入序号回车选择；10 秒内不选 → 默认用「{}」；也可直接输入进程名）", cfg.process_name);
+    print!("> ");
+    std::io::stdout().flush().ok();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        if std::io::stdin().read_line(&mut s).is_ok() {
+            let _ = tx.send(s);
+        }
+    });
+
+    match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(line) => {
+            let t = line.trim();
+            if let Ok(idx) = t.parse::<usize>() {
+                if (1..=names.len()).contains(&idx) {
+                    cfg.process_name = names[idx - 1].clone();
+                    println!("✓ 已选择音源：{}", cfg.process_name);
+                    return;
+                }
+            }
+            if !t.is_empty() {
+                cfg.process_name = t.to_string();
+                println!("✓ 已选择音源：{}", cfg.process_name);
+                return;
+            }
+            println!("（使用默认音源：{}）", cfg.process_name);
+        }
+        Err(_) => {
+            println!("\n⏱ 10 秒未选择，使用默认音源：{}", cfg.process_name);
+        }
+    }
 }
 
 /// 找到网易云音乐 exe：优先用配置里的路径，否则探测常见安装位置。
@@ -380,6 +476,7 @@ fn print_help() {
     println!("  setup       同上");
     println!("  install     只把 mod 安装到游戏目录");
     println!("  run         只开始转播（不尝试安装）");
+    println!("  pick        重新选择音源（列出正在出声的应用）");
     println!("  help        显示本帮助");
     println!();
     println!("选项:");
