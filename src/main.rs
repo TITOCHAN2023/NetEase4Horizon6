@@ -90,6 +90,12 @@ fn main() -> Result<()> {
             cfg.save();
             run_bridge(&cfg, effective_open_ui(&cfg, &opts))
         }
+        // 打开"应用音量和设备首选项"，引导把网易云路由到独立声卡（去掉直接外放）
+        "route" => {
+            print_route_help(&cfg);
+            open_url("ms-settings:apps-volume");
+            Ok(())
+        }
         // 选音源（随时可重新选）
         "pick" => {
             pick_process_with_timeout(&mut cfg);
@@ -154,7 +160,9 @@ fn install_flow(
         None => {
             println!(
                 "ℹ️  未找到 mod 安装包（需要 version.dll + spotify-radio + media）。\n   \
-                 请把本程序放进你解压好的 mod 文件夹再运行，或用 --mod-dir 指定其位置。\n   \
+                 请先从官方页面下载并解压 mod：\n   \
+                 https://www.nexusmods.com/forzahorizon6/mods/95\n   \
+                 然后把本程序放进解压出来的文件夹再运行，或用 --mod-dir 指定其位置。\n   \
                  （跳过安装，仍可作为纯转播工具使用。）"
             );
             return Ok(false);
@@ -237,6 +245,9 @@ fn run_bridge(cfg: &Config, open_ui: bool) -> Result<()> {
         }
     }
 
+    println!();
+    println!("💡 听到“两路声音重叠/有回声/感觉慢半拍”？那是 {} 在直接外放。", cfg.process_name);
+    println!("   把它的输出改到一个你没在用的声卡即可只走游戏电台 —— 运行 `route` 一键打开设置页。");
     println!();
     println!("⏳ 等待网易云音乐（{}）启动……（按 Ctrl+C 退出）", cfg.process_name);
     println!();
@@ -460,6 +471,18 @@ fn pause() {
     let _ = std::io::stdin().read_line(&mut s);
 }
 
+fn print_route_help(cfg: &Config) {
+    println!();
+    println!("🔇 去掉“{}”的直接外放（只走游戏电台、消除回声、不再受你调音量影响）：", cfg.process_name);
+    println!("   即将打开 Windows「应用音量和设备首选项」。在里面：");
+    println!("   1) 找到「{}」这一行；", cfg.process_name);
+    println!("   2) 把它的「输出」从默认扬声器改成一个你**没在用**的声卡");
+    println!("      （比如 NVIDIA / AMD 的 HDMI 声卡，或 NVIDIA Virtual Audio Device）；");
+    println!("   3) 把该声卡和 {} 自身音量都保持 100%。", cfg.process_name);
+    println!("   这样桥接照样抓得到声音，但你的扬声器里听不到它了。");
+    println!();
+}
+
 fn print_banner() {
     println!("============================================");
     println!(" NetEase FH6 Bridge  v{}", env!("CARGO_PKG_VERSION"));
@@ -477,6 +500,7 @@ fn print_help() {
     println!("  install     只把 mod 安装到游戏目录");
     println!("  run         只开始转播（不尝试安装）");
     println!("  pick        重新选择音源（列出正在出声的应用）");
+    println!("  route       打开设置页，引导把音源路由到独立声卡（去掉直接外放）");
     println!("  help        显示本帮助");
     println!();
     println!("选项:");
