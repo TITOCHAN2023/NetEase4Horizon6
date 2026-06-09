@@ -1,6 +1,6 @@
 [package]
 name = "netease-fh6-bridge"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "把网易云音乐的声音转成本地 HTTP 音频流，喂给 Forza Horizon 6 的 Spotify Radio mod 的“在线电台”入口。"
 license = "MIT"

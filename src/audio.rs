@@ -60,6 +60,9 @@ pub fn capture_session(pid: u32, bitrate_kbps: u32, clients: &Clients) -> Result
     let mut left: Vec<i16> = Vec::new();
     let mut right: Vec<i16> = Vec::new();
     let mut first = true;
+    // 诊断：累计一段时间的峰值电平
+    let mut peak: i32 = 0;
+    let mut peak_frames: usize = 0;
 
     loop {
         match h_event.wait_for_event(WAIT_TIMEOUT_MS) {
@@ -91,6 +94,26 @@ pub fn capture_session(pid: u32, bitrate_kbps: u32, clients: &Clients) -> Result
 
         if left.is_empty() {
             continue;
+        }
+
+        // 实时电平：每约 3 秒打印一次，让用户确认确实抓到了网易云的声音。
+        for &s in left.iter() {
+            let a = (s as i32).abs();
+            if a > peak {
+                peak = a;
+            }
+        }
+        peak_frames += left.len();
+        if peak_frames >= SAMPLE_RATE * 3 {
+            let pct = peak as f32 / 327.67;
+            if pct < 0.1 {
+                println!("🎚  捕获电平 0%（网易云没在出声？被静音？还是没在放歌）");
+            } else {
+                let bars = (pct / 5.0).round().clamp(1.0, 20.0) as usize;
+                println!("🎚  捕获电平 {pct:.0}%  [{}{}]", "#".repeat(bars), "-".repeat(20 - bars));
+            }
+            peak = 0;
+            peak_frames = 0;
         }
 
         // 按官方文档：先 reserve 足够空间，再 encode 到 spare capacity，最后 set_len。
