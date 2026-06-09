@@ -108,7 +108,14 @@ Windows 上编译并把 exe 发布到 Release。
 - [`sysinfo`](https://crates.io/crates/sysinfo) — 查找网易云进程
 - 纯 `std` 实现的极简流式 HTTP 服务器
 
+## 免责声明
+
+**这是非官方的个人爱好作品,与网易、Turn 10、Playground Games、微软、Spotify、Apple
+及所涉 mod 作者均无任何关联;不包含、不分发任何第三方 mod 或游戏文件;仅供个人非商业用途;
+按“现状”提供、不作任何担保;使用第三方 mod 可能违反游戏条款并导致封号等后果——风险自负。**
+
+完整条款见 [DISCLAIMER.md](DISCLAIMER.md)。安装/运行本工具即表示你已阅读并接受该免责声明。
+
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。本工具与网易、Turn 10、Playground Games、微软、Spotify、Apple
-均无任何关联。所有商标归各自所有者。Use at your own risk。
+MIT,见 [LICENSE](LICENSE)。所有商标归各自所有者。
