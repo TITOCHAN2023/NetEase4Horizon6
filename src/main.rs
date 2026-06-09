@@ -246,8 +246,15 @@ fn run_bridge(cfg: &Config, open_ui: bool) -> Result<()> {
     }
 
     println!();
-    println!("💡 听到“两路声音重叠/有回声/感觉慢半拍”？那是 {} 在直接外放。", cfg.process_name);
-    println!("   把它的输出改到一个你没在用的声卡即可只走游戏电台 —— 运行 `route` 一键打开设置页。");
+    println!("💡 若听到“两路声音重叠 / 回声 / 慢半拍”，是因为音源在直接外放。解决办法：");
+    if cfg.process_name.eq_ignore_ascii_case("cloudmusic.exe") {
+        println!("   打开 网易云音乐 → 设置 → 播放 → 把“输出设备”选一个【不发声的设备】");
+        println!("   （比如没接音箱的 HDMI 声卡，或 NVIDIA Virtual Audio Device）。");
+        println!("   这样网易云不再从你的扬声器外放，只通过游戏电台播放，桥接照样抓得到。");
+    } else {
+        println!("   在该应用自己的设置里把“输出设备”改到一个不发声的设备；");
+        println!("   或运行 `route` 改 Windows 的应用音量路由。");
+    }
     println!();
     println!("⏳ 等待网易云音乐（{}）启动……（按 Ctrl+C 退出）", cfg.process_name);
     println!();
@@ -474,6 +481,10 @@ fn pause() {
 fn print_route_help(cfg: &Config) {
     println!();
     println!("🔇 去掉“{}”的直接外放（只走游戏电台、消除回声、不再受你调音量影响）：", cfg.process_name);
+    if cfg.process_name.eq_ignore_ascii_case("cloudmusic.exe") {
+        println!("   ⭐ 最简单：网易云音乐 → 设置 → 播放 → 把“输出设备”选一个【不发声的设备】即可。");
+        println!("   （下面打开的 Windows 设置页是备选方案。）");
+    }
     println!("   即将打开 Windows「应用音量和设备首选项」。在里面：");
     println!("   1) 找到「{}」这一行；", cfg.process_name);
     println!("   2) 把它的「输出」从默认扬声器改成一个你**没在用**的声卡");
