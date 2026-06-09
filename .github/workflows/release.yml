@@ -5,6 +5,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -32,3 +35,18 @@ jobs:
         with:
           files: target/release/netease-fh6-bridge.exe
           generate_release_notes: true
+          body: |
+            **网易云音乐 → 地平线6 在线电台 桥接工具**
+
+            把网易云音乐的声音转成本地 HTTP 音频流，喂给 FH6 的 Spotify Radio mod 的「在线电台」入口。
+            下载 `netease-fh6-bridge.exe`，放进你**自己**解压好的 mod 文件夹里双击即用：
+            自动安装 mod 进游戏目录、自动启动网易云、自动起流、自动开网页并复制流地址（Ctrl+V 粘贴即可）。
+
+            详见仓库 README。
+
+            ---
+            ⚠️ **免责声明**：本工具为非官方个人爱好作品，与网易、Turn 10、Playground Games、微软、
+            Spotify、Apple 及所涉 mod 作者均无关联；**不包含、不分发任何第三方 mod 或游戏文件**
+            （你需自行从官方渠道获取 mod）；仅供个人非商业用途；按“现状”提供、不作任何担保；
+            使用第三方 mod 可能违反游戏条款并导致封号等后果——**风险自负**。完整条款见
+            [DISCLAIMER.md](https://github.com/TITOCHAN2023/NetEase4Horizon6/blob/main/DISCLAIMER.md)。
